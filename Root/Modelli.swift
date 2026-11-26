@@ -53,6 +53,7 @@ struct StatoPartita: Codable {
     var ipConosciuti: Set<String> = []
     var fileScaricati: [FileVirtuale] = []
     var missioneCorrente = 0
+    var tutorialVisto: Bool? = nil
     var missioniCompletate: Set<Int> = []
     var serverModificati: [String: [FileVirtuale]] = [:]  // file cancellati/modificati
 }

@@ -16,6 +16,26 @@ final class Motore: ObservableObject {
     @Published var tempoRimasto: Int? = nil
     @Published var connessoA: Server? = nil
     @Published var cartella = "/"
+    @Published var avviso: Avviso? = nil
+
+    struct Avviso: Equatable {
+        let id = UUID()
+        let titolo: String
+        let testo: String
+        let icona: String
+        let tipo: Riga.Tipo
+    }
+
+    func avvisa(_ titolo: String, _ testo: String, _ icona: String, _ tipo: Riga.Tipo) {
+        let a = Avviso(titolo: titolo, testo: testo, icona: icona, tipo: tipo)
+        avviso = a
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if avviso?.id == a.id { avviso = nil }
+        }
+    }
+
+    func completaTutorial() { stato.tutorialVisto = true; salva() }
 
     private var server: [String: Server] = [:]
     @Published private(set) var porteAperte: Set<Int> = []
@@ -131,6 +151,7 @@ final class Motore: ObservableObject {
         stato.crediti += m.ricompensa
         stato.missioniCompletate.insert(m.id)
         scrivi("Missione completata! +\(m.ricompensa) crediti.", .successo)
+        avvisa("MISSIONE COMPLETATA", "+\(m.ricompensa) crediti", "checkmark.seal.fill", .successo)
         consegnaMissione(m.id + 1)
     }
 
@@ -164,6 +185,7 @@ final class Motore: ObservableObject {
         stato.crediti -= p.prezzo
         stato.programmi.insert(p.nome)
         scrivi("Installato \(p.nome).", .successo)
+        avvisa("PROGRAMMA INSTALLATO", p.nome, "cpu", .successo)
     }
 
     private func filesLocali() {
@@ -182,8 +204,10 @@ final class Motore: ObservableObject {
         if pw == giusta {
             stato.fileScaricati[i].password = nil
             scrivi("Decifrato!\n\(stato.fileScaricati[i].contenuto)", .successo)
+            avvisa("FILE DECIFRATO", "Ora puoi consegnarlo nella Posta", "lock.open.fill", .successo)
         } else {
             scrivi("Password errata.", .errore)
+            avvisa("PASSWORD ERRATA", "Cerca un indizio nei file del server", "xmark.octagon.fill", .errore)
         }
     }
 
@@ -194,7 +218,9 @@ final class Motore: ObservableObject {
             scrivi("Scansione locale: nessun nodo vicino. Collegati a un server e scansiona da lì.", .errore); return
         }
         guard haAccesso else { scrivi("Serve accesso root per scansionare da questo nodo.", .errore); return }
-        if s.collegamenti.isEmpty { scrivi("Nessun nodo collegato."); return }
+        if s.collegamenti.isEmpty { scrivi("Nessun nodo collegato."); avvisa("NESSUN SERVER", "Da qui non si raggiunge altro", "dot.radiowaves.left.and.right", .normale); return }
+        let nuovi = s.collegamenti.filter { !stato.ipConosciuti.contains($0) }.count
+        avvisa(nuovi > 0 ? "\(nuovi) NUOVI SERVER" : "NIENTE DI NUOVO", nuovi > 0 ? "Li trovi sulla mappa" : "Conosci già tutti i server vicini", "dot.radiowaves.left.and.right", nuovi > 0 ? .successo : .normale)
         for ip in s.collegamenti {
             let nuovo = stato.ipConosciuti.insert(ip).inserted
             scrivi("  trovato \(ip)  \(server[ip]?.nome ?? "?")\(nuovo ? "  [NUOVO]" : "")", nuovo ? .successo : .normale)
@@ -264,6 +290,7 @@ final class Motore: ObservableObject {
         }
         haAccesso = true
         scrivi("PORTHACK riuscito. Accesso root ottenuto.", .successo)
+        avvisa("ACCESSO ROOT", "Ora puoi esplorare i file del server", "lock.open.fill", .successo)
     }
 
     // MARK: - File system
@@ -315,6 +342,7 @@ final class Motore: ObservableObject {
         stato.fileScaricati.removeAll { nomeFile($0.percorso) == nomeFile(f.percorso) }
         stato.fileScaricati.append(f)
         scrivi("Scaricato \(nomeFile(f.percorso)).", .successo)
+        avvisa("FILE SCARICATO", nomeFile(f.percorso), "arrow.down.doc.fill", .successo)
         aggiungiLog("file \(nomeFile(f.percorso)) copiato da sessione sospetta")
     }
 
@@ -347,6 +375,7 @@ final class Motore: ObservableObject {
     private func avviaTraccia(_ secondi: Int) {
         tempoRimasto = secondi
         scrivi("⚠️ TRACCIAMENTO AVVIATO: \(secondi) secondi.", .errore)
+        avvisa("TI STANNO RINTRACCIANDO", "Hai \(secondi) secondi: fai in fretta e cancella i log", "dot.radiowaves.left.and.right", .errore)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -359,6 +388,7 @@ final class Motore: ObservableObject {
             let multa = stato.crediti / 2
             stato.crediti -= multa
             scrivi("🚨 SEI STATO TRACCIATO! Connessione interrotta. -\(multa) crediti.", .errore)
+            avvisa("SEI STATO TRACCIATO", "-\(multa) crediti. Riprova più veloce!", "exclamationmark.triangle.fill", .errore)
             if let ip = connessoA?.ip, let originale = Livelli.server.first(where: { $0.ip == ip }) {
                 server[ip] = originale
                 stato.serverModificati[ip] = nil
@@ -448,6 +478,58 @@ final class Motore: ObservableObject {
         return nil
     }
 
+    struct Passo: Identifiable {
+        let id: Int
+        let testo: String
+        let fatto: Bool
+    }
+
+    /// Lista dei passi della missione corrente, con quelli già completati.
+    var passiMissione: [Passo] {
+        guard let m = missioneAttuale else { return [] }
+        let t = m.serverObiettivo
+        let srv = server[t]
+        let nome = srv?.nome.components(separatedBy: " - ").last ?? t
+        let file = stato.fileScaricati.first { nomeFile($0.percorso) == m.fileRichiesto }
+        let haFile = file != nil
+        let suObiettivo = connessoA?.ip == t
+        var lista: [(String, Bool)] = []
+        if !m.ipRivelati.contains(t) {
+            lista.append(("Trova il server \(nome) con Scansiona", stato.ipConosciuti.contains(t)))
+        }
+        lista.append(("Connettiti a \(nome)", haFile || suObiettivo))
+        let richieste = srv?.porteRichieste ?? 1
+        let aperte = suObiettivo ? porteAperte.count : 0
+        lista.append(("Apri le porte (\(min(aperte, richieste))/\(richieste))", haFile || (suObiettivo && (aperte >= richieste || haAccesso))))
+        lista.append(("Ottieni l'accesso root", haFile || (suObiettivo && haAccesso)))
+        lista.append(("Scarica \(m.fileRichiesto)", haFile))
+        if (srv?.tracciamento ?? 0) > 0 {
+            lista.append(("Cancella i log prima di uscire", haFile && !(suObiettivo && logPresenti)))
+        }
+        if Livelli.server.first(where: { $0.ip == t })?.file.contains(where: { nomeFile($0.percorso) == m.fileRichiesto && $0.password != nil }) == true {
+            lista.append(("Decifra il file con la password", haFile && file?.password == nil))
+        }
+        lista.append(("Consegnalo nella Posta", false))
+        return lista.enumerated().map { Passo(id: $0.offset, testo: $0.element.0, fatto: $0.element.1) }
+    }
+
+    /// Esegue direttamente l'azione consigliata. Ritorna la scheda da mostrare, se serve.
+    func eseguiGuida() {
+        switch guida.azione {
+        case .connetti(let ip): esegui("connect \(ip)")
+        case .porta(let n):
+            if let p = connessoA?.porte.first(where: { $0.numero == n }) { esegui("\(p.programma) \(n)") }
+        case .porthack: esegui("porthack")
+        case .scarica(let p): esegui("download \(p)")
+        case .cancellaLog: esegui("rm /log/*")
+        case .scansiona: esegui("scan")
+        case .rispondi: esegui("reply")
+        case .compra(let n): esegui("buy \(n)")
+        case .disconnetti: esegui("disconnect")
+        case .decifra, .nessuna: break
+        }
+    }
+
     var guida: Guida {
         guard let m = missioneAttuale else { return Guida(testo: "Demo completata! Nuove missioni in arrivo.", azione: .nessuna) }
         let tracciato = (connessoA?.tracciamento ?? 0) > 0
@@ -489,6 +571,7 @@ final class Motore: ObservableObject {
     /// Stato preimpostato per gli screenshot automatici.
     private func caricaDemo(_ schermata: String) {
         modalitaDemo = true
+        stato.tutorialVisto = schermata == "tutorial" ? nil : true
         stato.crediti = 650
         stato.programmi.formUnion(["ftpbounce", "webworm"])
         stato.ipConosciuti = ["10.0.0.5", "10.0.4.1", "10.0.4.12", "10.0.4.20"]

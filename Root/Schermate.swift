@@ -70,7 +70,11 @@ struct OperazioniView: View {
             .frame(width: 340)
             .frame(maxHeight: .infinity)
             Rectangle().fill(Tema.verde.opacity(0.2)).frame(width: 1)
-            TerminaleView(autoFocus: autoFocus)
+            VStack(spacing: 0) {
+                ChecklistView()
+                Rectangle().fill(Tema.verde.opacity(0.2)).frame(height: 1)
+                TerminaleView(autoFocus: autoFocus)
+            }
         }
     }
 }
@@ -154,7 +158,7 @@ struct MappaView: View {
                 }
                 .pannello()
             } else {
-                Text("Tocca un server sulla mappa").font(Tema.mono(11)).foregroundColor(Tema.verde.opacity(0.6)).pannello()
+                Text("Tocca un server sulla mappa per collegarti").font(Tema.mono(11)).foregroundColor(Tema.verde.opacity(0.6)).pannello()
             }
         }
         .padding(10)
@@ -248,7 +252,7 @@ struct ServerPanel: View {
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("PORTA \(p.numero)").font(Tema.mono(12, .bold))
-                            Text(p.servizio).font(Tema.mono(10)).opacity(0.6)
+                            Text("\(p.servizio) · si apre con \(p.programma)").font(Tema.mono(10)).opacity(0.6)
                         }
                         Spacer()
                         if aperta {
@@ -271,7 +275,7 @@ struct ServerPanel: View {
                 }
             }
         }
-        PulsanteAzione(titolo: "PORTHACK", icona: "bolt.horizontal.fill", colore: Tema.ciano,
+        PulsanteAzione(titolo: "OTTIENI ACCESSO (porthack)", icona: "bolt.horizontal.fill", colore: Tema.ciano,
                        consigliato: azione == .porthack,
                        abilitato: motore.porteAperte.count >= s.porteRichieste) {
             motore.esegui("porthack")
@@ -319,7 +323,7 @@ struct ServerPanel: View {
             }
         }
         HStack(spacing: 6) {
-            PulsanteAzione(titolo: "SCANSIONA", icona: "dot.radiowaves.left.and.right", consigliato: azione == .scansiona) {
+            PulsanteAzione(titolo: "TROVA SERVER", icona: "dot.radiowaves.left.and.right", consigliato: azione == .scansiona) {
                 motore.esegui("scan")
             }
             PulsanteAzione(titolo: "CANCELLA LOG", icona: "trash", colore: Tema.rosso,
@@ -652,5 +656,44 @@ struct ShopView: View {
         case "tracekill": return "eye.slash.fill"
         default: return "cpu"
         }
+    }
+}
+
+// MARK: - Checklist della missione
+
+struct ChecklistView: View {
+    @EnvironmentObject var motore: Motore
+    @State private var aperta = true
+
+    var body: some View {
+        let passi = motore.passiMissione
+        let attuale = passi.first { !$0.fatto }?.id
+        VStack(alignment: .leading, spacing: 4) {
+            Button { withAnimation { aperta.toggle() } } label: {
+                HStack {
+                    Text("MISSIONE: \(motore.missioneAttuale?.oggetto.uppercased() ?? "—")").font(Tema.mono(11, .heavy)).lineLimit(1)
+                    Spacer()
+                    Text("\(passi.filter(\.fatto).count)/\(passi.count)").font(Tema.mono(11, .bold))
+                    Image(systemName: aperta ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .bold))
+                }
+                .foregroundColor(Tema.ambra)
+            }
+            if aperta {
+                ForEach(passi) { p in
+                    HStack(spacing: 8) {
+                        Image(systemName: p.fatto ? "checkmark.square.fill" : (p.id == attuale ? "arrow.right.square.fill" : "square"))
+                            .foregroundColor(p.fatto ? Tema.ciano : (p.id == attuale ? Tema.ambra : Tema.verde.opacity(0.4)))
+                        Text(p.testo)
+                            .strikethrough(p.fatto, color: Tema.ciano.opacity(0.6))
+                            .foregroundColor(p.fatto ? Tema.ciano.opacity(0.6) : (p.id == attuale ? Tema.ambra : Tema.verde.opacity(0.55)))
+                            .fontWeight(p.id == attuale ? .bold : .regular)
+                    }
+                    .font(Tema.mono(11))
+                    .bagliore(p.id == attuale ? Tema.ambra : .clear, raggio: 3)
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Tema.pannello)
     }
 }

@@ -26,7 +26,7 @@ jobs:
           xcrun simctl ui "$DEV" appearance dark
           xcrun simctl install "$DEV" build/Build/Products/Debug-iphonesimulator/Root.app
           mkdir -p shots
-          for s in avvio mappa porte operazioni posta file shop; do
+          for s in tutorial mappa porte operazioni file shop; do
             SIMCTL_CHILD_ROOT_DEMO=$s xcrun simctl launch --terminate-running-process "$DEV" com.acee2.root
             if [ "$s" = avvio ]; then sleep 2.3; else sleep 5; fi
             xcrun simctl io "$DEV" screenshot "shots/$s.png"

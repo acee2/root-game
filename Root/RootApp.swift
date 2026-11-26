@@ -55,11 +55,25 @@ struct ContenitoreView: View {
             } else {
                 AvvioView { withAnimation(.easeIn(duration: 0.4)) { avviato = true } }
             }
+            if avviato, let a = motore.avviso {
+                AvvisoView(avviso: a)
+                    .id(a.id)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 54)
+                    .allowsHitTesting(false)
+            }
+            if avviato && motore.stato.tutorialVisto != true {
+                TutorialView { withAnimation { motore.completaTutorial() } }
+                    .transition(.opacity)
+            }
             EffettoCRT().allowsHitTesting(false).ignoresSafeArea()
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: motore.avviso)
         .onAppear {
             switch demo {
             case nil, "avvio": break
+            case "tutorial": avviato = true
             case "posta": avviato = true; scheda = .posta
             case "file": avviato = true; scheda = .file
             case "shop": avviato = true; scheda = .shop
@@ -139,6 +153,25 @@ struct BarraStato: View {
                 .contentShape(Rectangle())
                 .onTapGesture { vaiAllaGuida() }
 
+                if motore.guida.azione != .nessuna {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        vaiAllaGuida()
+                        if case .decifra = motore.guida.azione {} else { motore.eseguiGuida() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(etichettaGuida)
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(Tema.mono(12, .heavy))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Tema.ambra)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .bagliore(Tema.ambra, raggio: 6)
+                    }
+                }
+
                 if let t = motore.tempoRimasto {
                     HStack(spacing: 6) {
                         Image(systemName: "dot.radiowaves.left.and.right")
@@ -172,6 +205,22 @@ struct BarraStato: View {
             }
         }
         .background(Tema.pannello)
+    }
+
+    private var etichettaGuida: String {
+        switch motore.guida.azione {
+        case .connetti: return "CONNETTI"
+        case .porta: return "APRI PORTA"
+        case .porthack: return "ENTRA"
+        case .scarica: return "SCARICA"
+        case .cancellaLog: return "CANCELLA LOG"
+        case .scansiona: return "SCANSIONA"
+        case .rispondi: return "CONSEGNA"
+        case .compra: return "COMPRA"
+        case .decifra: return "VAI AI FILE"
+        case .disconnetti: return "ESCI"
+        case .nessuna: return ""
+        }
     }
 
     private func vaiAllaGuida() {
@@ -254,6 +303,80 @@ struct AvvioView: View {
             }
             try? await Task.sleep(nanoseconds: 900_000_000)
             if ProcessInfo.processInfo.environment["ROOT_DEMO"] == nil { fine() }
+        }
+    }
+}
+
+// MARK: - Avviso a comparsa
+
+struct AvvisoView: View {
+    let avviso: Motore.Avviso
+    private var colore: Color {
+        switch avviso.tipo {
+        case .errore: return Tema.rosso
+        case .successo: return Tema.ciano
+        default: return Tema.verde
+        }
+    }
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: avviso.icona).font(.system(size: 22, weight: .bold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(avviso.titolo).font(Tema.mono(15, .heavy))
+                Text(avviso.testo).font(Tema.mono(11)).opacity(0.85)
+            }
+        }
+        .foregroundColor(colore)
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Color.black.opacity(0.92))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(colore, lineWidth: 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .bagliore(colore, raggio: 10)
+    }
+}
+
+// MARK: - Tutorial iniziale
+
+struct TutorialView: View {
+    let fine: () -> Void
+
+    private let passi: [(String, String, String)] = [
+        ("map", "1. SCEGLI UN SERVER", "Sulla mappa tocca un server e premi Connetti."),
+        ("lock.open", "2. APRI LE PORTE", "Usa i tuoi programmi per aprire le porte, poi premi Ottieni accesso."),
+        ("arrow.down.doc", "3. RUBA IL FILE", "Esplora le cartelle e scarica il file che ti serve."),
+        ("trash", "4. NON FARTI PRENDERE", "Se c'è il timer rosso, cancella i log ed esci prima dello zero."),
+        ("paperplane", "5. CONSEGNA", "Rispondi alla mail nella Posta per guadagnare crediti."),
+    ]
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.88).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("COME SI GIOCA").font(Tema.mono(20, .heavy)).foregroundColor(Tema.verde).bagliore(Tema.verde, raggio: 8)
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(passi, id: \.1) { p in
+                        VStack(spacing: 8) {
+                            Image(systemName: p.0).font(.system(size: 26)).foregroundColor(Tema.ciano).bagliore(Tema.ciano)
+                                .frame(height: 34)
+                            Text(p.1).font(Tema.mono(11, .heavy)).multilineTextAlignment(.center)
+                            Text(p.2).font(Tema.mono(10)).opacity(0.75).multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundColor(Tema.verde)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .pannello()
+                    }
+                }
+                .frame(height: 170)
+                HStack(spacing: 10) {
+                    Image(systemName: "scope").foregroundColor(Tema.ambra)
+                    Text("Bloccato? Guarda PROSSIMO PASSO in alto: il pulsante giallo lo fa per te.")
+                        .font(Tema.mono(12, .bold)).foregroundColor(Tema.ambra)
+                }
+                PulsanteAzione(titolo: "INIZIA", icona: "play.fill", colore: Tema.ambra, consigliato: true, azione: fine)
+                    .frame(width: 220)
+            }
+            .padding(.horizontal, 50)
         }
     }
 }
