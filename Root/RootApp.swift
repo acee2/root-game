@@ -342,7 +342,7 @@ struct TutorialView: View {
 
     private let passi: [(String, String, String)] = [
         ("map", "1. SCEGLI UN SERVER", "Sulla mappa tocca un server e premi Connetti."),
-        ("lock.open", "2. APRI LE PORTE", "Usa i tuoi programmi per aprire le porte, poi premi Ottieni accesso."),
+        ("lock.open", "2. APRI PORTE", "Usa i tuoi programmi per aprire le porte, poi premi Ottieni accesso."),
         ("arrow.down.doc", "3. RUBA IL FILE", "Esplora le cartelle e scarica il file che ti serve."),
         ("trash", "4. NON FARTI PRENDERE", "Se c'è il timer rosso, cancella i log ed esci prima dello zero."),
         ("paperplane", "5. CONSEGNA", "Rispondi alla mail nella Posta per guadagnare crediti."),
