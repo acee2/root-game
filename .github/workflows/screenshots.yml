@@ -1,0 +1,35 @@
+name: Screenshots
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  shots:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen && xcodegen generate
+      - name: Compila per simulatore
+        run: |
+          xcodebuild -project Root.xcodeproj -scheme Root -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Scatta screenshot
+        run: |
+          DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[56] Pro \(" | head -1 | grep -oE "[0-9A-F-]{36}")
+          echo "Dispositivo: $DEV"
+          xcrun simctl boot "$DEV"
+          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl status_bar "$DEV" override --time "9:41" --batteryLevel 100 --cellularBars 4 --wifiBars 3
+          xcrun simctl ui "$DEV" appearance dark
+          xcrun simctl install "$DEV" build/Build/Products/Debug-iphonesimulator/Root.app
+          mkdir -p shots
+          for s in avvio terminale rete posta negozio; do
+            SIMCTL_CHILD_ROOT_DEMO=$s xcrun simctl launch --terminate-running-process "$DEV" com.acee2.root
+            if [ "$s" = avvio ]; then sleep 2.3; else sleep 5; fi
+            xcrun simctl io "$DEV" screenshot "shots/$s.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots

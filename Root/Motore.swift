@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 struct Riga: Identifiable {
     enum Tipo { case normale, comando, errore, successo, sistema }
@@ -17,17 +18,22 @@ final class Motore: ObservableObject {
     @Published var cartella = "/"
 
     private var server: [String: Server] = [:]
-    private var porteAperte: Set<Int> = []
-    private var haAccesso = false
+    @Published private(set) var porteAperte: Set<Int> = []
+    @Published private(set) var haAccesso = false
     private var timer: Timer?
     private(set) var cronologia: [String] = []
 
     private let chiaveSalvataggio = "root.salvataggio"
 
     init() {
+        if let demo = ProcessInfo.processInfo.environment["ROOT_DEMO"] {
+            ricostruisciServer()
+            caricaDemo(demo)
+            return
+        }
         carica()
         ricostruisciServer()
-        scrivi("ROOT OS v0.1 — terminale sicuro", .sistema)
+        scrivi("ROOT OS v0.2 — terminale sicuro", .sistema)
         scrivi("Digita `help` per l'elenco dei comandi, `mail` per i messaggi.", .sistema)
         if stato.missioniCompletate.isEmpty && stato.ipConosciuti.isEmpty {
             consegnaMissione(0)
@@ -42,6 +48,11 @@ final class Motore: ObservableObject {
 
     func scrivi(_ t: String, _ tipo: Riga.Tipo = .normale) {
         righe.append(Riga(testo: t, tipo: tipo))
+        switch tipo {
+        case .errore: UINotificationFeedbackGenerator().notificationOccurred(.error)
+        case .successo: UINotificationFeedbackGenerator().notificationOccurred(.success)
+        default: break
+        }
         if righe.count > 400 { righe.removeFirst(righe.count - 400) }
     }
 
@@ -369,7 +380,32 @@ final class Motore: ObservableObject {
         for (ip, files) in stato.serverModificati { server[ip]?.file = files }
     }
 
+    /// Server per la mappa di rete.
+    func info(_ ip: String) -> Server? { server[ip] }
+
+    /// Mail ricevute finora (la più recente per prima).
+    var mailRicevute: [Missione] {
+        Livelli.missioni.filter { $0.id <= stato.missioneCorrente }.reversed()
+    }
+
+    private var modalitaDemo = false
+
+    /// Stato preimpostato per gli screenshot automatici.
+    private func caricaDemo(_ schermata: String) {
+        modalitaDemo = true
+        stato.crediti = 650
+        stato.programmi.formUnion(["ftpbounce", "webworm"])
+        stato.ipConosciuti = ["10.0.0.5", "10.0.4.1", "10.0.4.12", "10.0.4.20"]
+        stato.missioneCorrente = 2
+        stato.missioniCompletate = [0, 1]
+        scrivi("ROOT OS v0.2 — terminale sicuro", .sistema)
+        for c in ["connect 10.0.4.20", "probe", "sshcrack 22", "ftpbounce 21", "webworm 80",
+                  "porthack", "cd home/marco", "ls", "cat note.txt"] { esegui(c) }
+        tempoRimasto = 32
+    }
+
     func salva() {
+        guard !modalitaDemo else { return }
         if let dati = try? JSONEncoder().encode(stato) { UserDefaults.standard.set(dati, forKey: chiaveSalvataggio) }
     }
 

@@ -5,169 +5,240 @@ struct RootApp: App {
     @StateObject private var motore = Motore()
     var body: some Scene {
         WindowGroup {
-            TerminaleView()
+            ContenitoreView()
                 .environmentObject(motore)
                 .preferredColorScheme(.dark)
+                .statusBarHidden(false)
         }
     }
 }
 
-let verdeTerminale = Color(red: 0.2, green: 1.0, blue: 0.45)
+enum Scheda: String, CaseIterable {
+    case terminale = "TERM", rete = "RETE", posta = "POSTA", negozio = "SHOP"
+    var icona: String {
+        switch self {
+        case .terminale: return "chevron.left.forwardslash.chevron.right"
+        case .rete: return "point.3.connected.trianglepath.dotted"
+        case .posta: return "envelope"
+        case .negozio: return "cpu"
+        }
+    }
+}
 
-struct TerminaleView: View {
+struct ContenitoreView: View {
     @EnvironmentObject var motore: Motore
-    @State private var input = ""
-    @State private var indiceCronologia: Int? = nil
-    @FocusState private var focus: Bool
-
-    private let rapidi = ["help", "mail", "reply", "probe", "porthack", "ls", "cd ..", "scan", "status", "store", "files", "disconnect"]
+    private let demo = ProcessInfo.processInfo.environment["ROOT_DEMO"]
+    @State private var avviato = false
+    @State private var scheda: Scheda = .terminale
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 0) {
-                barraStato
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(motore.righe) { r in
-                                Text(r.testo)
-                                    .foregroundColor(colore(r.tipo))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .textSelection(.enabled)
-                                    .id(r.id)
-                            }
+            Tema.sfondo.ignoresSafeArea()
+            if avviato {
+                VStack(spacing: 0) {
+                    BarraStato()
+                    Group {
+                        switch scheda {
+                        case .terminale: TerminaleView(autoFocus: demo == nil)
+                        case .rete: ReteView(scheda: $scheda)
+                        case .posta: PostaView(scheda: $scheda)
+                        case .negozio: NegozioView()
                         }
-                        .font(.system(size: 13, design: .monospaced))
-                        .padding(10)
                     }
-                    .onChange(of: motore.righe.count) { _ in
-                        if let ultimo = motore.righe.last { withAnimation { proxy.scrollTo(ultimo.id, anchor: .bottom) } }
-                    }
-                    .onTapGesture { focus = true }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    BarraSchede(scheda: $scheda)
                 }
-                barraRapida
-                rigaInput
+                .transition(.opacity)
+            } else {
+                AvvioView { withAnimation(.easeIn(duration: 0.4)) { avviato = true } }
             }
             EffettoCRT().allowsHitTesting(false).ignoresSafeArea()
         }
-        .onAppear { focus = true }
-    }
-
-    private var barraStato: some View {
-        HStack {
-            Text(motore.connessoA.map { "● \($0.nome)" } ?? "○ offline")
-                .lineLimit(1)
-            Spacer()
-            if let t = motore.tempoRimasto {
-                Text("TRACCIA \(t)s")
-                    .bold()
-                    .foregroundColor(.red)
-                    .opacity(t % 2 == 0 ? 1 : 0.5)
+        .onAppear {
+            switch demo {
+            case "terminale": avviato = true; scheda = .terminale
+            case "rete": avviato = true; scheda = .rete
+            case "posta": avviato = true; scheda = .posta
+            case "negozio": avviato = true; scheda = .negozio
+            default: break
             }
-            Text("\(motore.stato.crediti) cr")
-        }
-        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-        .foregroundColor(verdeTerminale)
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(motore.tempoRimasto != nil ? Color.red.opacity(0.15) : Color.white.opacity(0.05))
-    }
-
-    private var barraRapida: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                Button("↑") { cronologia(-1) }
-                Button("↓") { cronologia(1) }
-                ForEach(rapidi, id: \.self) { c in
-                    Button(c) { esegui(c) }
-                }
-            }
-            .buttonStyle(TastoTerminale())
-            .padding(.horizontal, 8).padding(.vertical, 6)
-        }
-        .background(Color.white.opacity(0.04))
-    }
-
-    private var rigaInput: some View {
-        HStack(spacing: 6) {
-            Text("$").foregroundColor(verdeTerminale)
-            TextField("", text: $input)
-                .focused($focus)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.go)
-                .foregroundColor(verdeTerminale)
-                .tint(verdeTerminale)
-                .onSubmit { esegui(input); focus = true }
-            Button("Tab") { completa() }.buttonStyle(TastoTerminale())
-        }
-        .font(.system(size: 15, design: .monospaced))
-        .padding(10)
-    }
-
-    private func esegui(_ c: String) {
-        motore.esegui(c)
-        input = ""
-        indiceCronologia = nil
-    }
-
-    private func cronologia(_ passo: Int) {
-        let h = motore.cronologia
-        guard !h.isEmpty else { return }
-        let i = min(max((indiceCronologia ?? h.count) + passo, 0), h.count - 1)
-        indiceCronologia = i
-        input = h[i]
-    }
-
-    /// Autocompletamento semplice di comandi e IP noti.
-    private func completa() {
-        let comandi = ["help", "mail", "reply", "status", "store", "buy", "files", "scan", "probe", "connect",
-                       "disconnect", "porthack", "ls", "cd", "cat", "download", "rm", "decrypt", "clear",
-                       "sshcrack", "ftpbounce", "webworm", "smtpoverflow"]
-        let parti = input.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        if parti.count <= 1 {
-            if let m = comandi.first(where: { $0.hasPrefix(input.lowercased()) }) { input = m + " " }
-        } else if parti[0] == "connect", let ip = motore.stato.ipConosciuti.sorted().first(where: { $0.hasPrefix(parti[1]) }) {
-            input = "connect " + ip
-        } else if parti[0] == "buy", let p = Livelli.programmiNegozio.first(where: { $0.nome.hasPrefix(parti[1]) }) {
-            input = "buy " + p.nome
-        }
-    }
-
-    private func colore(_ t: Riga.Tipo) -> Color {
-        switch t {
-        case .normale: return verdeTerminale.opacity(0.85)
-        case .comando: return .white
-        case .errore: return Color(red: 1, green: 0.35, blue: 0.35)
-        case .successo: return Color(red: 0.4, green: 1, blue: 1)
-        case .sistema: return Color(red: 1, green: 0.75, blue: 0.2)
         }
     }
 }
 
-struct TastoTerminale: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, design: .monospaced))
-            .foregroundColor(verdeTerminale)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 6).stroke(verdeTerminale.opacity(0.5)))
-            .opacity(configuration.isPressed ? 0.5 : 1)
-    }
-}
+// MARK: - Barra di stato superiore
 
-/// Scanline e vignettatura stile monitor CRT.
-struct EffettoCRT: View {
+struct BarraStato: View {
+    @EnvironmentObject var motore: Motore
+
     var body: some View {
-        ZStack {
-            Canvas { ctx, size in
-                var y: CGFloat = 0
-                while y < size.height {
-                    ctx.fill(Path(CGRect(x: 0, y: y, width: size.width, height: 1)), with: .color(.black.opacity(0.25)))
-                    y += 3
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(motore.connessoA == nil ? Color.gray : (motore.haAccesso ? Tema.ciano : Tema.verde))
+                    .frame(width: 8, height: 8)
+                    .bagliore(motore.connessoA == nil ? .clear : Tema.verde)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(motore.connessoA?.nome.uppercased() ?? "OFFLINE")
+                        .font(Tema.mono(12, .bold)).lineLimit(1)
+                    Text(motore.connessoA.map { "\($0.ip)\(motore.haAccesso ? "  ROOT" : "")" } ?? "nessuna connessione")
+                        .font(Tema.mono(10)).opacity(0.6)
+                }
+                Spacer()
+                Text("\(motore.stato.crediti) CR")
+                    .font(Tema.mono(13, .bold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Tema.verde.opacity(0.5)))
+            }
+            .foregroundColor(Tema.verde)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+
+            if let t = motore.tempoRimasto, let totale = motore.connessoA?.tracciamento, totale > 0 {
+                BarraTraccia(rimasto: t, totale: max(totale, t))
+            } else {
+                Rectangle().fill(Tema.verde.opacity(0.25)).frame(height: 1)
+            }
+        }
+        .background(Tema.pannello)
+    }
+}
+
+struct BarraTraccia: View {
+    let rimasto: Int
+    let totale: Int
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text("⚠ TRACCIAMENTO IN CORSO").font(Tema.mono(11, .bold))
+                Spacer()
+                Text(String(format: "00:%02d", rimasto)).font(Tema.mono(13, .heavy))
+            }
+            .foregroundColor(Tema.rosso)
+            .bagliore(Tema.rosso)
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(Tema.rosso.opacity(0.15))
+                    Rectangle().fill(Tema.rosso)
+                        .frame(width: g.size.width * CGFloat(rimasto) / CGFloat(totale))
+                        .bagliore(Tema.rosso, raggio: 6)
                 }
             }
-            RadialGradient(colors: [.clear, .black.opacity(0.55)], center: .center, startRadius: 200, endRadius: 600)
+            .frame(height: 4)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 6)
+        .background(Tema.rosso.opacity(rimasto % 2 == 0 ? 0.14 : 0.07))
+        .animation(.linear(duration: 0.3), value: rimasto)
+    }
+}
+
+// MARK: - Barra schede inferiore
+
+struct BarraSchede: View {
+    @Binding var scheda: Scheda
+    @EnvironmentObject var motore: Motore
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Scheda.allCases, id: \.self) { s in
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    scheda = s
+                } label: {
+                    VStack(spacing: 4) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: s.icona).font(.system(size: 17, weight: .medium))
+                            if s == .posta && !motore.stato.missioniCompletate.contains(motore.stato.missioneCorrente)
+                                && motore.missioneAttuale != nil {
+                                Circle().fill(Tema.ambra).frame(width: 7, height: 7).offset(x: 6, y: -3)
+                            }
+                        }
+                        Text(s.rawValue).font(Tema.mono(10, .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .foregroundColor(scheda == s ? Tema.verde : Tema.verde.opacity(0.35))
+                    .bagliore(scheda == s ? Tema.verde : .clear)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(scheda == s ? Tema.verde : .clear).frame(height: 2)
+                    }
+                }
+            }
+        }
+        .background(Tema.pannello)
+        .overlay(alignment: .top) { Rectangle().fill(Tema.verde.opacity(0.25)).frame(height: 1) }
+    }
+}
+
+// MARK: - Schermata di avvio
+
+struct AvvioView: View {
+    let fine: () -> Void
+    @State private var righeVisibili = 0
+    @State private var progresso: CGFloat = 0
+
+    private let logo = """
+    ██████╗  ██████╗  ██████╗ ████████╗
+    ██╔══██╗██╔═══██╗██╔═══██╗╚══██╔══╝
+    ██████╔╝██║   ██║██║   ██║   ██║
+    ██╔══██╗██║   ██║██║   ██║   ██║
+    ██║  ██║╚██████╔╝╚██████╔╝   ██║
+    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝    ╚═╝
+    """
+
+    private let log = [
+        "[ OK ] Caricamento kernel ROOT OS 0.2",
+        "[ OK ] Montaggio file system cifrato",
+        "[ OK ] Avvio modulo di rete anonima",
+        "[ OK ] Instradamento tramite 7 proxy",
+        "[ OK ] Verifica integrità programmi",
+        "[ !! ] Messaggio a orologeria rilevato",
+        "[ OK ] Sessione pronta",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Spacer()
+            Text(logo)
+                .font(Tema.mono(10.5, .bold))
+                .foregroundColor(Tema.verde)
+                .bagliore(Tema.verde, raggio: 8)
+                .frame(maxWidth: .infinity)
+            Text("anonymous terminal · build 0.2")
+                .font(Tema.mono(11)).foregroundColor(Tema.verde.opacity(0.5))
+                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(0..<righeVisibili, id: \.self) { i in
+                    Text(log[i])
+                        .font(Tema.mono(12))
+                        .foregroundColor(log[i].hasPrefix("[ !!") ? Tema.ambra : Tema.verde.opacity(0.85))
+                }
+            }
+            .frame(height: 150, alignment: .top)
+            VStack(alignment: .leading, spacing: 6) {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Rectangle().stroke(Tema.verde.opacity(0.5))
+                        Rectangle().fill(Tema.verde).frame(width: g.size.width * progresso).bagliore()
+                    }
+                }
+                .frame(height: 10)
+                Text("\(Int(progresso * 100))%").font(Tema.mono(11)).foregroundColor(Tema.verde)
+            }
+            Spacer()
+        }
+        .padding(28)
+        .contentShape(Rectangle())
+        .onTapGesture { fine() }
+        .task {
+            for i in 1...log.count {
+                try? await Task.sleep(nanoseconds: 380_000_000)
+                withAnimation(.easeOut(duration: 0.3)) {
+                    righeVisibili = i
+                    progresso = CGFloat(i) / CGFloat(log.count)
+                }
+            }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            if ProcessInfo.processInfo.environment["ROOT_DEMO"] == nil { fine() }
         }
     }
 }

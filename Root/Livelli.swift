@@ -1,7 +1,17 @@
 import Foundation
+import CoreGraphics
 
 /// Tutti i contenuti del gioco. Per aggiungere livelli basta modificare questo file.
 enum Livelli {
+
+    /// Posizione dei nodi sulla mappa di rete (0...1).
+    static let posizioni: [String: CGPoint] = [
+        "10.0.0.5": CGPoint(x: 0.18, y: 0.78),
+        "10.0.4.1": CGPoint(x: 0.42, y: 0.52),
+        "10.0.4.12": CGPoint(x: 0.22, y: 0.24),
+        "10.0.4.20": CGPoint(x: 0.72, y: 0.36),
+        "77.12.0.3": CGPoint(x: 0.82, y: 0.10),
+    ]
 
     static let programmiNegozio: [Programma] = [
         Programma(nome: "ftpbounce", descrizione: "Apre la porta 21 (FTP)", prezzo: 150),
