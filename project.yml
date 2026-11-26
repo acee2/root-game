@@ -1,0 +1,23 @@
+name: Root
+options:
+  bundleIdPrefix: com.acee2
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  Root:
+    type: application
+    platform: iOS
+    sources: [Root]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.acee2.root
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Root
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        SWIFT_VERSION: "5.0"
+        CODE_SIGNING_ALLOWED: NO
