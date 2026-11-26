@@ -8,19 +8,20 @@ struct RootApp: App {
             ContenitoreView()
                 .environmentObject(motore)
                 .preferredColorScheme(.dark)
-                .statusBarHidden(false)
+                .persistentSystemOverlays(.hidden)
+                .statusBarHidden(true)
         }
     }
 }
 
 enum Scheda: String, CaseIterable {
-    case terminale = "TERM", rete = "RETE", posta = "POSTA", negozio = "SHOP"
+    case operazioni = "HACK", posta = "POSTA", file = "FILE", shop = "SHOP"
     var icona: String {
         switch self {
-        case .terminale: return "chevron.left.forwardslash.chevron.right"
-        case .rete: return "point.3.connected.trianglepath.dotted"
+        case .operazioni: return "terminal"
         case .posta: return "envelope"
-        case .negozio: return "cpu"
+        case .file: return "folder"
+        case .shop: return "cpu"
         }
     }
 }
@@ -29,24 +30,26 @@ struct ContenitoreView: View {
     @EnvironmentObject var motore: Motore
     private let demo = ProcessInfo.processInfo.environment["ROOT_DEMO"]
     @State private var avviato = false
-    @State private var scheda: Scheda = .terminale
+    @State private var scheda: Scheda = .operazioni
 
     var body: some View {
         ZStack {
             Tema.sfondo.ignoresSafeArea()
             if avviato {
-                VStack(spacing: 0) {
-                    BarraStato()
-                    Group {
-                        switch scheda {
-                        case .terminale: TerminaleView(autoFocus: demo == nil)
-                        case .rete: ReteView(scheda: $scheda)
-                        case .posta: PostaView(scheda: $scheda)
-                        case .negozio: NegozioView()
+                HStack(spacing: 0) {
+                    BarraLaterale(scheda: $scheda)
+                    VStack(spacing: 0) {
+                        BarraStato(scheda: $scheda)
+                        Group {
+                            switch scheda {
+                            case .operazioni: OperazioniView(scheda: $scheda, autoFocus: false)
+                            case .posta: PostaView(scheda: $scheda)
+                            case .file: FileLocaliView()
+                            case .shop: ShopView()
+                            }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    BarraSchede(scheda: $scheda)
                 }
                 .transition(.opacity)
             } else {
@@ -56,120 +59,133 @@ struct ContenitoreView: View {
         }
         .onAppear {
             switch demo {
-            case "terminale": avviato = true; scheda = .terminale
-            case "rete": avviato = true; scheda = .rete
+            case nil, "avvio": break
             case "posta": avviato = true; scheda = .posta
-            case "negozio": avviato = true; scheda = .negozio
-            default: break
+            case "file": avviato = true; scheda = .file
+            case "shop": avviato = true; scheda = .shop
+            default: avviato = true; scheda = .operazioni
             }
         }
     }
 }
 
-// MARK: - Barra di stato superiore
+// MARK: - Barra laterale (schede)
 
-struct BarraStato: View {
+struct BarraLaterale: View {
+    @Binding var scheda: Scheda
     @EnvironmentObject var motore: Motore
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(motore.connessoA == nil ? Color.gray : (motore.haAccesso ? Tema.ciano : Tema.verde))
-                    .frame(width: 8, height: 8)
-                    .bagliore(motore.connessoA == nil ? .clear : Tema.verde)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(motore.connessoA?.nome.uppercased() ?? "OFFLINE")
-                        .font(Tema.mono(12, .bold)).lineLimit(1)
-                    Text(motore.connessoA.map { "\($0.ip)\(motore.haAccesso ? "  ROOT" : "")" } ?? "nessuna connessione")
-                        .font(Tema.mono(10)).opacity(0.6)
+        VStack(spacing: 4) {
+            Text(">_").font(Tema.mono(16, .heavy)).foregroundColor(Tema.verde).bagliore().padding(.vertical, 8)
+            ForEach(Scheda.allCases, id: \.self) { s in
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    scheda = s
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: s.icona).font(.system(size: 17, weight: .medium))
+                        Text(s.rawValue).font(Tema.mono(9, .bold))
+                    }
+                    .frame(width: 58, height: 52)
+                    .foregroundColor(scheda == s ? Tema.verde : Tema.verde.opacity(0.4))
+                    .background(scheda == s ? Tema.verde.opacity(0.1) : .clear)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(scheda == s ? Tema.verde : .clear).frame(width: 2)
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if consigliata(s) && scheda != s {
+                            Circle().fill(Tema.ambra).frame(width: 8, height: 8).bagliore(Tema.ambra).padding(8)
+                        }
+                    }
+                    .bagliore(scheda == s ? Tema.verde : .clear, raggio: 3)
                 }
-                Spacer()
+            }
+            Spacer()
+        }
+        .frame(width: 62)
+        .background(Tema.pannello)
+        .overlay(alignment: .trailing) { Rectangle().fill(Tema.verde.opacity(0.25)).frame(width: 1) }
+    }
+
+    private func consigliata(_ s: Scheda) -> Bool {
+        switch (motore.guida.azione, s) {
+        case (.rispondi, .posta), (.decifra, .file), (.compra, .shop): return true
+        default: return false
+        }
+    }
+}
+
+// MARK: - Barra di stato con obiettivo
+
+struct BarraStato: View {
+    @EnvironmentObject var motore: Motore
+    @Binding var scheda: Scheda
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // obiettivo
+                HStack(spacing: 8) {
+                    Image(systemName: "scope").foregroundColor(Tema.ambra)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("PROSSIMO PASSO").font(Tema.mono(9, .bold)).foregroundColor(Tema.ambra.opacity(0.7))
+                        Text(motore.guida.testo).font(Tema.mono(12, .bold)).foregroundColor(Tema.ambra).lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+                .bagliore(Tema.ambra, raggio: 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { vaiAllaGuida() }
+
+                if let t = motore.tempoRimasto {
+                    HStack(spacing: 6) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                        Text(String(format: "TRACCIA 00:%02d", t)).font(Tema.mono(13, .heavy))
+                    }
+                    .foregroundColor(Tema.rosso)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Tema.rosso.opacity(t % 2 == 0 ? 0.22 : 0.1))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Tema.rosso.opacity(0.7)))
+                    .bagliore(Tema.rosso)
+                }
+
                 Text("\(motore.stato.crediti) CR")
                     .font(Tema.mono(13, .bold))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .foregroundColor(Tema.verde)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Tema.verde.opacity(0.5)))
             }
-            .foregroundColor(Tema.verde)
-            .padding(.horizontal, 14).padding(.vertical, 8)
+            .padding(.horizontal, 14).padding(.vertical, 7)
 
             if let t = motore.tempoRimasto, let totale = motore.connessoA?.tracciamento, totale > 0 {
-                BarraTraccia(rimasto: t, totale: max(totale, t))
+                GeometryReader { g in
+                    Rectangle().fill(Tema.rosso)
+                        .frame(width: g.size.width * CGFloat(t) / CGFloat(max(totale, t)))
+                        .bagliore(Tema.rosso, raggio: 5)
+                        .animation(.linear(duration: 1), value: t)
+                }
+                .frame(height: 2)
             } else {
                 Rectangle().fill(Tema.verde.opacity(0.25)).frame(height: 1)
             }
         }
         .background(Tema.pannello)
     }
-}
 
-struct BarraTraccia: View {
-    let rimasto: Int
-    let totale: Int
-    var body: some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text("⚠ TRACCIAMENTO IN CORSO").font(Tema.mono(11, .bold))
-                Spacer()
-                Text(String(format: "00:%02d", rimasto)).font(Tema.mono(13, .heavy))
-            }
-            .foregroundColor(Tema.rosso)
-            .bagliore(Tema.rosso)
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(Tema.rosso.opacity(0.15))
-                    Rectangle().fill(Tema.rosso)
-                        .frame(width: g.size.width * CGFloat(rimasto) / CGFloat(totale))
-                        .bagliore(Tema.rosso, raggio: 6)
-                }
-            }
-            .frame(height: 4)
+    private func vaiAllaGuida() {
+        switch motore.guida.azione {
+        case .rispondi: scheda = .posta
+        case .decifra: scheda = .file
+        case .compra: scheda = .shop
+        case .nessuna: break
+        default: scheda = .operazioni
         }
-        .padding(.horizontal, 14).padding(.vertical, 6)
-        .background(Tema.rosso.opacity(rimasto % 2 == 0 ? 0.14 : 0.07))
-        .animation(.linear(duration: 0.3), value: rimasto)
     }
 }
 
-// MARK: - Barra schede inferiore
-
-struct BarraSchede: View {
-    @Binding var scheda: Scheda
-    @EnvironmentObject var motore: Motore
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Scheda.allCases, id: \.self) { s in
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    scheda = s
-                } label: {
-                    VStack(spacing: 4) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: s.icona).font(.system(size: 17, weight: .medium))
-                            if s == .posta && !motore.stato.missioniCompletate.contains(motore.stato.missioneCorrente)
-                                && motore.missioneAttuale != nil {
-                                Circle().fill(Tema.ambra).frame(width: 7, height: 7).offset(x: 6, y: -3)
-                            }
-                        }
-                        Text(s.rawValue).font(Tema.mono(10, .bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .foregroundColor(scheda == s ? Tema.verde : Tema.verde.opacity(0.35))
-                    .bagliore(scheda == s ? Tema.verde : .clear)
-                    .overlay(alignment: .top) {
-                        Rectangle().fill(scheda == s ? Tema.verde : .clear).frame(height: 2)
-                    }
-                }
-            }
-        }
-        .background(Tema.pannello)
-        .overlay(alignment: .top) { Rectangle().fill(Tema.verde.opacity(0.25)).frame(height: 1) }
-    }
-}
-
-// MARK: - Schermata di avvio
+// MARK: - Avvio
 
 struct AvvioView: View {
     let fine: () -> Void
@@ -186,7 +202,7 @@ struct AvvioView: View {
     """
 
     private let log = [
-        "[ OK ] Caricamento kernel ROOT OS 0.2",
+        "[ OK ] Caricamento kernel ROOT OS 0.3",
         "[ OK ] Montaggio file system cifrato",
         "[ OK ] Avvio modulo di rete anonima",
         "[ OK ] Instradamento tramite 7 proxy",
@@ -196,37 +212,36 @@ struct AvvioView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Spacer()
-            Text(logo)
-                .font(Tema.mono(10.5, .bold))
-                .foregroundColor(Tema.verde)
-                .bagliore(Tema.verde, raggio: 8)
-                .frame(maxWidth: .infinity)
-            Text("anonymous terminal · build 0.2")
-                .font(Tema.mono(11)).foregroundColor(Tema.verde.opacity(0.5))
-                .frame(maxWidth: .infinity)
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(0..<righeVisibili, id: \.self) { i in
-                    Text(log[i])
-                        .font(Tema.mono(12))
-                        .foregroundColor(log[i].hasPrefix("[ !!") ? Tema.ambra : Tema.verde.opacity(0.85))
-                }
+        HStack(spacing: 40) {
+            VStack(spacing: 14) {
+                Text(logo)
+                    .font(Tema.mono(11, .bold))
+                    .foregroundColor(Tema.verde)
+                    .bagliore(Tema.verde, raggio: 8)
+                Text("anonymous terminal · build 0.3")
+                    .font(Tema.mono(11)).foregroundColor(Tema.verde.opacity(0.5))
             }
-            .frame(height: 150, alignment: .top)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(0..<righeVisibili, id: \.self) { i in
+                        Text(log[i])
+                            .font(Tema.mono(12))
+                            .foregroundColor(log[i].hasPrefix("[ !!") ? Tema.ambra : Tema.verde.opacity(0.85))
+                    }
+                }
+                .frame(width: 330, height: 150, alignment: .topLeading)
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         Rectangle().stroke(Tema.verde.opacity(0.5))
                         Rectangle().fill(Tema.verde).frame(width: g.size.width * progresso).bagliore()
                     }
                 }
-                .frame(height: 10)
-                Text("\(Int(progresso * 100))%").font(Tema.mono(11)).foregroundColor(Tema.verde)
+                .frame(width: 330, height: 10)
+                Text(progresso >= 1 ? "TOCCA PER INIZIARE" : "\(Int(progresso * 100))%")
+                    .font(Tema.mono(11, .bold)).foregroundColor(Tema.verde)
             }
-            Spacer()
         }
-        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { fine() }
         .task {
@@ -237,7 +252,7 @@ struct AvvioView: View {
                     progresso = CGFloat(i) / CGFloat(log.count)
                 }
             }
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            try? await Task.sleep(nanoseconds: 900_000_000)
             if ProcessInfo.processInfo.environment["ROOT_DEMO"] == nil { fine() }
         }
     }

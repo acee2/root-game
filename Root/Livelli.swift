@@ -73,16 +73,16 @@ enum Livelli {
 
     static let missioni: [Missione] = [
         Missione(id: 0, mittente: "ghost@anonimo", oggetto: "Se leggi, sono sparito",
-                 testo: "Collegati alla mia sandbox 10.0.0.5 (`connect 10.0.0.5`), apri la porta SSH con `sshcrack 22`, poi `porthack`. Scarica benvenuto.txt e rispondi con `reply`.",
-                 ipRivelati: ["10.0.0.5"], fileRichiesto: "benvenuto.txt", ricompensa: 200),
+                 testo: "Ho lasciato un messaggio nella mia sandbox (10.0.0.5). Collegati, apri la porta SSH, ottieni l'accesso con Porthack e scarica benvenuto.txt. Poi rispondimi qui.",
+                 ipRivelati: ["10.0.0.5"], fileRichiesto: "benvenuto.txt", serverObiettivo: "10.0.0.5", ricompensa: 200),
         Missione(id: 1, mittente: "ghost@anonimo", oggetto: "Il contratto",
-                 testo: "Nell'archivio di Vortex c'è un contratto. Trovalo (`scan` dalla mia sandbox o dal loro gateway). Ti serve ftpbounce: compralo con `store` e `buy ftpbounce`. Attento: l'archivio ti traccia in 60 secondi.",
-                 ipRivelati: [], fileRichiesto: "contratto.pdf", ricompensa: 450),
+                 testo: "Nell'archivio di Vortex c'è un contratto. Il server non è ancora sulla tua mappa: scansiona la rete partendo dai nodi che conosci. Ti servirà ftpbounce dallo Shop. Attento: l'archivio ti traccia in 60 secondi.",
+                 ipRivelati: [], fileRichiesto: "contratto.pdf", serverObiettivo: "10.0.4.12", ricompensa: 450),
         Missione(id: 2, mittente: "ghost@anonimo", oggetto: "Il vault di Marco",
-                 testo: "Marco della posta Vortex tiene un file cifrato. Le persone scrivono le password ovunque... Usa `decrypt <file> <password>` una volta scaricato.",
-                 ipRivelati: [], fileRichiesto: "helix.enc", ricompensa: 700),
+                 testo: "Marco della posta Vortex tiene un file cifrato. Le persone scrivono le password ovunque... Scaricalo e decifralo dalla sezione File.",
+                 ipRivelati: [], fileRichiesto: "helix.enc", serverObiettivo: "10.0.4.20", ricompensa: 700),
         Missione(id: 3, mittente: "ghost@anonimo", oggetto: "ORACOLO",
                  testo: "Ultimo passo. Entra nel nodo di Helix e prendi nucleo.bin. Ti servono 4 porte. Buona fortuna.",
-                 ipRivelati: [], fileRichiesto: "nucleo.bin", ricompensa: 1500),
+                 ipRivelati: [], fileRichiesto: "nucleo.bin", serverObiettivo: "77.12.0.3", ricompensa: 1500),
     ]
 }

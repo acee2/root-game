@@ -322,8 +322,9 @@ final class Motore: ObservableObject {
         guard fileServer() != nil, let s = connessoA, let nome else { if nome == nil { scrivi("Uso: rm <file> oppure rm *", .errore) }; return }
         var files = server[s.ip]?.file ?? []
         let prima = files.count
-        if nome == "*" {
-            let base = cartella == "/" ? "/" : cartella + "/"
+        if nome == "*" || nome.hasSuffix("/*") {
+            let dir = nome == "*" ? cartella : percorsoAssoluto(String(nome.dropLast(2)))
+            let base = dir == "/" ? "/" : dir + "/"
             files.removeAll { $0.percorso.hasPrefix(base) && !$0.percorso.dropFirst(base.count).contains("/") }
         } else {
             let p = percorsoAssoluto(nome)
@@ -390,6 +391,101 @@ final class Motore: ObservableObject {
 
     private var modalitaDemo = false
 
+    // MARK: - Guida per il giocatore
+
+    enum Azione: Equatable {
+        case connetti(String), porta(Int), compra(String), porthack, scarica(String)
+        case cancellaLog, disconnetti, rispondi, decifra(String), scansiona, nessuna
+    }
+
+    struct Guida { let testo: String; let azione: Azione }
+
+    struct Voce: Identifiable {
+        var id: String { percorso }
+        let nome: String
+        let percorso: String
+        let cartella: Bool
+        let file: FileVirtuale?
+    }
+
+    /// Contenuto della cartella corrente del server (solo con accesso root).
+    func vociCartella() -> [Voce] {
+        guard let s = connessoA, haAccesso, let files = server[s.ip]?.file else { return [] }
+        let base = cartella == "/" ? "/" : cartella + "/"
+        var cartelle = Set<String>()
+        var voci: [Voce] = []
+        for f in files where f.percorso.hasPrefix(base) {
+            let resto = f.percorso.dropFirst(base.count)
+            if let slash = resto.firstIndex(of: "/") {
+                let nome = String(resto[..<slash])
+                if cartelle.insert(nome).inserted {
+                    voci.append(Voce(nome: nome, percorso: base + nome, cartella: true, file: nil))
+                }
+            } else {
+                voci.append(Voce(nome: String(resto), percorso: f.percorso, cartella: false, file: f))
+            }
+        }
+        return voci.sorted { ($0.cartella ? 0 : 1, $0.nome) < ($1.cartella ? 0 : 1, $1.nome) }
+    }
+
+    var logPresenti: Bool {
+        guard let s = connessoA else { return false }
+        return (server[s.ip]?.file ?? []).contains { $0.percorso.hasPrefix("/log/") && $0.contenuto.contains("sospetta") }
+    }
+
+    /// Nodo noto da cui scansionare per avvicinarsi a `obiettivo`.
+    private func nodoDaScansionare(verso obiettivo: String) -> String? {
+        for noto in stato.ipConosciuti.sorted() {
+            var coda = server[noto]?.collegamenti ?? []
+            var visti = Set<String>()
+            while !coda.isEmpty {
+                let ip = coda.removeFirst()
+                if ip == obiettivo { return noto }
+                guard !stato.ipConosciuti.contains(ip), visti.insert(ip).inserted else { continue }
+                coda += server[ip]?.collegamenti ?? []
+            }
+        }
+        return nil
+    }
+
+    var guida: Guida {
+        guard let m = missioneAttuale else { return Guida(testo: "Demo completata! Nuove missioni in arrivo.", azione: .nessuna) }
+        let tracciato = (connessoA?.tracciamento ?? 0) > 0
+        if let f = stato.fileScaricati.first(where: { nomeFile($0.percorso) == m.fileRichiesto }) {
+            if connessoA != nil && tracciato && logPresenti { return Guida(testo: "Cancella i log prima di uscire!", azione: .cancellaLog) }
+            if f.password != nil { return Guida(testo: "Decifra \(m.fileRichiesto) nella sezione File (cerca la password nel server)", azione: .decifra(m.fileRichiesto)) }
+            return Guida(testo: "Rispondi alla mail di \(m.mittente) nella Posta", azione: .rispondi)
+        }
+        let destinazione: String
+        let scopo: String
+        if stato.ipConosciuti.contains(m.serverObiettivo) {
+            destinazione = m.serverObiettivo; scopo = "obiettivo"
+        } else if let n = nodoDaScansionare(verso: m.serverObiettivo) {
+            destinazione = n; scopo = "scansione"
+        } else {
+            return Guida(testo: "Leggi la mail nella Posta", azione: .nessuna)
+        }
+        guard let s = connessoA, s.ip == destinazione else {
+            if connessoA != nil && tracciato && logPresenti { return Guida(testo: "Cancella i log prima di cambiare server", azione: .cancellaLog) }
+            let nome = server[destinazione]?.nome ?? destinazione
+            return Guida(testo: "Connettiti a \(nome) (\(destinazione))", azione: .connetti(destinazione))
+        }
+        if !haAccesso {
+            if porteAperte.count >= s.porteRichieste { return Guida(testo: "Lancia PORTHACK per ottenere l'accesso", azione: .porthack) }
+            if let p = s.porte.first(where: { !porteAperte.contains($0.numero) && stato.programmi.contains($0.programma) }) {
+                return Guida(testo: "Apri la porta \(p.numero) \(p.servizio) con \(p.programma)", azione: .porta(p.numero))
+            }
+            if let p = s.porte.first(where: { !stato.programmi.contains($0.programma) }) {
+                return Guida(testo: "Ti manca \(p.programma): compralo nello Shop", azione: .compra(p.programma))
+            }
+        }
+        if scopo == "scansione" { return Guida(testo: "Scansiona la rete per trovare nuovi server", azione: .scansiona) }
+        if let f = server[s.ip]?.file.first(where: { nomeFile($0.percorso) == m.fileRichiesto }) {
+            return Guida(testo: "Trova e scarica \(m.fileRichiesto)", azione: .scarica(f.percorso))
+        }
+        return Guida(testo: "Esplora il server", azione: .nessuna)
+    }
+
     /// Stato preimpostato per gli screenshot automatici.
     private func caricaDemo(_ schermata: String) {
         modalitaDemo = true
@@ -399,9 +495,19 @@ final class Motore: ObservableObject {
         stato.missioneCorrente = 2
         stato.missioniCompletate = [0, 1]
         scrivi("ROOT OS v0.2 — terminale sicuro", .sistema)
-        for c in ["connect 10.0.4.20", "probe", "sshcrack 22", "ftpbounce 21", "webworm 80",
-                  "porthack", "cd home/marco", "ls", "cat note.txt"] { esegui(c) }
-        tempoRimasto = 32
+        let comandi: [String]
+        switch schermata {
+        case "mappa", "posta", "shop": comandi = ["mail"]
+        case "porte": comandi = ["connect 10.0.4.20", "probe", "sshcrack 22"]
+        case "file":
+            comandi = ["connect 10.0.4.20", "sshcrack 22", "ftpbounce 21", "webworm 80", "porthack",
+                       "download /home/marco/vault/helix.enc", "download /home/marco/note.txt", "rm /log/*", "disconnect"]
+        default:
+            comandi = ["connect 10.0.4.20", "probe", "sshcrack 22", "ftpbounce 21", "webworm 80",
+                       "porthack", "cd home/marco", "ls", "cat note.txt"]
+        }
+        for c in comandi { esegui(c) }
+        if connessoA != nil { tempoRimasto = 32 }
     }
 
     func salva() {

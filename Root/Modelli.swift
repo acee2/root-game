@@ -34,6 +34,7 @@ struct Missione: Codable, Identifiable {
     let testo: String
     let ipRivelati: [String]
     let fileRichiesto: String     // nome del file da consegnare
+    let serverObiettivo: String   // IP del server dove si trova il file
     let ricompensa: Int
 }
 
