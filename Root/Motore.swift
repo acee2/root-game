@@ -33,7 +33,7 @@ final class Motore: ObservableObject {
         }
         carica()
         ricostruisciServer()
-        scrivi("ROOT OS v0.2 — terminale sicuro", .sistema)
+        scrivi("ROOT OS v0.3 — terminale sicuro", .sistema)
         scrivi("Digita `help` per l'elenco dei comandi, `mail` per i messaggi.", .sistema)
         if stato.missioniCompletate.isEmpty && stato.ipConosciuti.isEmpty {
             consegnaMissione(0)
@@ -494,7 +494,7 @@ final class Motore: ObservableObject {
         stato.ipConosciuti = ["10.0.0.5", "10.0.4.1", "10.0.4.12", "10.0.4.20"]
         stato.missioneCorrente = 2
         stato.missioniCompletate = [0, 1]
-        scrivi("ROOT OS v0.2 — terminale sicuro", .sistema)
+        scrivi("ROOT OS v0.3 — terminale sicuro", .sistema)
         let comandi: [String]
         switch schermata {
         case "mappa", "posta", "shop": comandi = ["mail"]

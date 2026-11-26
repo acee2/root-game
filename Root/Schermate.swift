@@ -236,7 +236,7 @@ struct ServerPanel: View {
 
     // Fase 1: aprire le porte e lanciare porthack
     @ViewBuilder private func attacco(_ s: Server, _ azione: Motore.Azione) -> some View {
-        TitoloSezione(testo: "PORTE APERTE \(motore.porteAperte.count)/\(s.porteRichieste)")
+        TitoloSezione(testo: "PORTE \(motore.porteAperte.count)/\(s.porteRichieste)")
         ScrollView {
             VStack(spacing: 6) {
                 ForEach(s.porte, id: \.numero) { p in
@@ -368,7 +368,7 @@ struct TerminaleView: View {
                     .lineLimit(1)
                 ZStack(alignment: .leading) {
                     if input.isEmpty && !focus {
-                        Text(cursore ? "█  tocca per scrivere comandi" : "   tocca per scrivere comandi")
+                        Text(cursore ? "█ comandi" : "  comandi")
                             .foregroundColor(Tema.verde.opacity(0.4))
                     }
                     TextField("", text: $input)
